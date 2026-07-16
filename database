@@ -1,0 +1,69 @@
+create table retail_sales(
+InvoiceNo varchar(50),
+StockCode varchar(50),
+Description varchar (50),
+Quantity int,
+InvoiceDate Datetime ,
+UnitPrice float,
+CustomerId int,
+Country varchar(50)
+);
+INSERT INTO retail_sales
+(InvoiceNo, StockCode, Description, Quantity, InvoiceDate, UnitPrice, CustomerID, Country)
+VALUES
+('500001', '85123A', 'Retro Leather Jacket', 1, '2026-01-15 10:30:00', 120.00, 1001, 'United Kingdom'),
+
+('500004', '22423', 'Vintage Denim Shirt', 2, '2026-04-10 14:20:00', 45.00, 1001, 'United Kingdom'),
+
+('500008', '47566', 'Boho Summer Dress', 1, '2026-07-14 09:15:00', 85.00, 1001, 'United Kingdom'),
+
+('500002', '22086', 'Classic Wool Overcoat', 2, '2025-02-10 11:15:00', 250.00, 1002, 'United States'),
+
+('500003', '84997D', 'Retro Round Sunglasses', 4, '2025-11-20 16:00:00', 15.00, 1003, 'Germany'),
+
+('500005', '22423', 'Vintage Denim Shirt', 1, '2026-03-05 11:00:00', 45.00, 1003, 'Germany'),
+
+('500009', '47566', 'Boho Summer Dress', 1, '2026-07-15 15:45:00', 85.00, 1004, 'France'),
+
+('500006', '23203', 'Suede Chelsea Boots', 2, '2026-06-01 13:10:00', 95.00, 1005, 'United Kingdom'),
+
+('C50007', '23203', 'Suede Chelsea Boots', -1, '2026-06-05 09:30:00', 95.00, 1005, 'United Kingdom'),
+
+('500010', '85123A', 'Retro Leather Jacket', 1, '2026-07-01 12:00:00', 120.00, NULL, 'United Kingdom'),
+
+('500011', '22086', 'Classic Wool Overcoat', 1, '2026-07-02 14:30:00', 250.00, NULL, 'United Kingdom');
+create temp table guest_checkouts as 
+select * from retail_sales 
+where CustomerID is Null;
+
+create  temp table return_count as 
+select count(*) from retail_sales
+where InvoiceNo like 'C%' and Quantity<0
+group by InvoiceNo and Quantity;
+
+create temp table actual_purchase as 
+select count(*) from retail_sales
+where Quantity>0;
+
+create temp table revenue as 
+select InvoiceNo ,StockCode ,Description,Quantity ,InvoiceDate ,UnitPrice,CustomerId ,Country ,Quantity*UnitPrice as totalrevenue
+from retail_sales;
+
+create temp table highestsales as 
+select Country,rank()over(order by totalrevenue desc)
+from revenue limit 5;
+
+create temp table  PopularProduct as 
+select StockCode,Description,rank()over(order by Quantity desc)
+from retail_sales
+limit 5;
+
+select * from guest_checkouts;
+select * from return_count;
+select  * from actual_purchase;
+select * from revenue;
+select * from highestsales;
+select * from PopularProduct;
+
+
+                          
