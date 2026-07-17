@@ -1,13 +1,12 @@
-drop table if exists retail_sales;
-create table retail_sales(
-InvoiceNo varchar(50),
-StockCode varchar(50),
-Description varchar (50),
-Quantity int,
-InvoiceDate Datetime ,
-UnitPrice float,
-CustomerId int,
-Country varchar(50)
+CREATE TABLE retail_sales (
+    InvoiceNo VARCHAR(10),
+    StockCode VARCHAR(10),
+    Description VARCHAR(100),
+    Quantity INT,
+    InvoiceDate DATETIME,
+    UnitPrice DECIMAL(10,2),
+    CustomerID INT,
+    Country VARCHAR(50)
 );
 INSERT INTO retail_sales
 (InvoiceNo, StockCode, Description, Quantity, InvoiceDate, UnitPrice, CustomerID, Country)
@@ -58,75 +57,78 @@ create temp table  PopularProduct as
 select StockCode,Description,rank()over(order by Quantity desc)
 from retail_sales
 limit 5;
-WITH recency AS (
-    SELECT
-        CustomerID,
-        CAST(
-            JULIANDAY((SELECT MAX(InvoiceDate) FROM retail_sales))
-            - JULIANDAY(MAX(InvoiceDate))
-            AS INTEGER
-        ) AS recency_days
-    FROM retail_sales
-    WHERE CustomerID IS NOT NULL
-    GROUP BY CustomerID
-),
-
-frequency AS (
-    SELECT
-        CustomerID,
-        COUNT(*) AS frequency_count
-    FROM retail_sales
-    WHERE CustomerID IS NOT NULL
-    GROUP BY CustomerID
-),
-
-monetary AS (
-    SELECT
-        CustomerID,
-        SUM(Quantity * UnitPrice) AS total_spend
-    FROM retail_sales
-    WHERE CustomerID IS NOT NULL
-    GROUP BY CustomerID
-)
-
-,rmf as (select r.CustomerID,
-    r.recency_days,
-    f.frequency_count,
-    m.total_spend,
-    NTILE(5) OVER (ORDER BY r.recency_days DESC) AS R_score,
-    NTILE(5) OVER (ORDER BY f.frequency_count) AS F_score,
-    NTILE(5) OVER (ORDER BY m.total_spend) AS M_score
-FROM recency r
-JOIN frequency f
-    ON r.CustomerID = f.CustomerID
-JOIN monetary m
-    ON r.CustomerID = m.CustomerID)
-select *,case 
-    when R_score in ( 4, 5) and F_score in (4 , 5) then "Champions"
-    when R_score in (1,2) and F_score in (1,2) then "Lost"
-    when R_score =1 and F_score in (1 , 3) then "about to slepp"
-    else
-    "average customer "
-    end
-    from rmf;
-CREATE TEMP TABLE cohortmonth AS
+with recency as 
+(
 SELECT
     CustomerID,
-    MIN(InvoiceDate) AS cohort_month
+    CAST(
+        julianday(DATE((SELECT MAX(InvoiceDate) FROM retail_sales))) -
+        julianday(DATE(MAX(InvoiceDate)))
+        AS INTEGER
+    ) AS recency_days
 FROM retail_sales
 WHERE CustomerID IS NOT NULL
-GROUP BY CustomerID;
+GROUP BY CustomerID
+)
+,frequency as 
+(
+select CustomerID,count(*)as frequency_count 
+from retail_sales
+where CustomerID is not null and Quantity>0
+group by CustomerID
+)
+,monetary as 
+(
+select CustomerID,sum(Quantity*unitprice)as total_spend
+from retail_sales
+where CustomerID is not null
+group by CustomerID
+)
+,rmf_raw as (
+select r.CustomerID,r.recency_days,f.frequency_count,m.total_spend
+from recency r 
+join frequency f on r.CustomerID=f.CustomerID
+join monetary m on r.CustomerID=m.CustomerID
+)
+,scores as (select *,
+ntile(5) over(order by recency_days desc) as R_score,
+ntile(5)over(order by frequency_count asc)as F_score,
+ntile(5)over(order by total_spend asc)as M_score
+from rmf_raw
+)
+,levels as 
+(
+select *,
+case 
+when R_score in (4,5) and F_score in(4,5) then "champions"
+when R_score in (1,2) and F_score in (1,2) then "loss"
+when R_score =1 and F_score in(1,2) then "about to sleep"
+else 
+"average custmers"
+end 
+from scores)
+,first_purchase AS (
+    SELECT
+        CustomerID,
+        InvoiceDate,
+        MIN(InvoiceDate) OVER (PARTITION BY CustomerID) AS firstpurchase
+    FROM retail_sales
+    WHERE CustomerID IS NOT NULL
+),
 
-SELECT
-    r.CustomerID,
-    r.InvoiceDate,
-    c.cohort_month,
-    (
-        (strftime('%Y', r.InvoiceDate) - strftime('%Y', c.cohort_month)) * 12
-        +
-        (strftime('%m', r.InvoiceDate) - strftime('%m', c.cohort_month))
-    ) AS cohort_index
-FROM retail_sales r
-JOIN cohortmonth c
-    ON r.CustomerID = c.CustomerID
-ORDER BY r.CustomerID, r.InvoiceDate;
+cohort_month AS (
+    SELECT
+        CustomerID,
+        firstpurchase,
+        (
+            (CAST(strftime('%Y', InvoiceDate) AS INTEGER) -
+             CAST(strftime('%Y', firstpurchase) AS INTEGER)) * 12
+            +
+            (CAST(strftime('%m', InvoiceDate) AS INTEGER) -
+             CAST(strftime('%m', firstpurchase) AS INTEGER))
+        ) AS cohort_month
+    FROM first_purchase
+)
+
+SELECT *
+FROM cohort_month;
