@@ -109,9 +109,24 @@ select *,case
     "average customer "
     end
     from rmf;
-select CustomerID,InvoiceDate  as cohort_month from retail_sales
-group by CustomerID
-order by InvoiceDate
-select 
+CREATE TEMP TABLE cohortmonth AS
+SELECT
+    CustomerID,
+    MIN(InvoiceDate) AS cohort_month
+FROM retail_sales
+WHERE CustomerID IS NOT NULL
+GROUP BY CustomerID;
 
-    
+SELECT
+    r.CustomerID,
+    r.InvoiceDate,
+    c.cohort_month,
+    (
+        (strftime('%Y', r.InvoiceDate) - strftime('%Y', c.cohort_month)) * 12
+        +
+        (strftime('%m', r.InvoiceDate) - strftime('%m', c.cohort_month))
+    ) AS cohort_index
+FROM retail_sales r
+JOIN cohortmonth c
+    ON r.CustomerID = c.CustomerID
+ORDER BY r.CustomerID, r.InvoiceDate;
