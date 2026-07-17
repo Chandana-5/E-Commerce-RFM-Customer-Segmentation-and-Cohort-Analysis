@@ -8,127 +8,127 @@ CREATE TABLE retail_sales (
     CustomerID INT,
     Country VARCHAR(50)
 );
+
 INSERT INTO retail_sales
 (InvoiceNo, StockCode, Description, Quantity, InvoiceDate, UnitPrice, CustomerID, Country)
 VALUES
 ('500001', '85123A', 'Retro Leather Jacket', 1, '2026-01-15 10:30:00', 120.00, 1001, 'United Kingdom'),
-
 ('500004', '22423', 'Vintage Denim Shirt', 2, '2026-04-10 14:20:00', 45.00, 1001, 'United Kingdom'),
-
 ('500008', '47566', 'Boho Summer Dress', 1, '2026-07-14 09:15:00', 85.00, 1001, 'United Kingdom'),
-
 ('500002', '22086', 'Classic Wool Overcoat', 2, '2025-02-10 11:15:00', 250.00, 1002, 'United States'),
-
 ('500003', '84997D', 'Retro Round Sunglasses', 4, '2025-11-20 16:00:00', 15.00, 1003, 'Germany'),
-
 ('500005', '22423', 'Vintage Denim Shirt', 1, '2026-03-05 11:00:00', 45.00, 1003, 'Germany'),
-
-('500009', '47566', 'Boho Summer Dress', 1, '2026-07-15 15:45:00', 85.00, 1004, 'France'),
-
+('500009', '47566', 'Boho Summer Dress', 1, '2026-07-15 15:45:00', 1004, 'France'),
 ('500006', '23203', 'Suede Chelsea Boots', 2, '2026-06-01 13:10:00', 95.00, 1005, 'United Kingdom'),
-
 ('C50007', '23203', 'Suede Chelsea Boots', -1, '2026-06-05 09:30:00', 95.00, 1005, 'United Kingdom'),
-
 ('500010', '85123A', 'Retro Leather Jacket', 1, '2026-07-01 12:00:00', 120.00, NULL, 'United Kingdom'),
-
 ('500011', '22086', 'Classic Wool Overcoat', 1, '2026-07-02 14:30:00', 250.00, NULL, 'United Kingdom');
-create temp table guest_checkouts as 
-select * from retail_sales 
-where CustomerID is Null;
 
-create  temp table return_count as 
-select count(*) from retail_sales
-where InvoiceNo like 'C%' and Quantity<0
-group by InvoiceNo and Quantity;
+CREATE TEMP TABLE guest_checkouts as 
+SELECT * FROM retail_sales 
+WHERE CustomerID IS NULL;
 
-create temp table actual_purchase as 
-select count(*) from retail_sales
-where Quantity>0;
+CREATE TEMP TABLE return_count as 
+SELECT COUNT(*) FROM retail_sales
+WHERE InvoiceNo LIKE 'C%' AND Quantity < 0
+GROUP BY InvoiceNo, Quantity;
 
-create temp table revenue as 
-select InvoiceNo ,StockCode ,Description,Quantity ,InvoiceDate ,UnitPrice,CustomerId ,Country ,Quantity*UnitPrice as totalrevenue
-from retail_sales;
+CREATE TEMP TABLE actual_purchase as 
+SELECT COUNT(*) FROM retail_sales
+WHERE Quantity > 0;
 
-create temp table highestsales as 
-select Country,rank()over(order by totalrevenue desc)
-from revenue limit 5;
+CREATE TEMP TABLE revenue as 
+SELECT InvoiceNo, StockCode, Description, Quantity, InvoiceDate, UnitPrice, CustomerId, Country, Quantity*UnitPrice AS totalrevenue
+FROM retail_sales;
 
-create temp table  PopularProduct as 
-select StockCode,Description,rank()over(order by Quantity desc)
-from retail_sales
-limit 5;
-with recency as 
-(
-SELECT
-    CustomerID,
-    CAST(
-        julianday(DATE((SELECT MAX(InvoiceDate) FROM retail_sales))) -
-        julianday(DATE(MAX(InvoiceDate)))
-        AS INTEGER
-    ) AS recency_days
+CREATE TEMP TABLE highestsales as 
+SELECT Country, RANK() OVER(ORDER BY totalrevenue DESC)
+FROM revenue LIMIT 5;
+
+CREATE TEMP TABLE PopularProduct as 
+SELECT StockCode, Description, RANK() OVER(ORDER BY Quantity DESC)
 FROM retail_sales
-WHERE CustomerID IS NOT NULL
-GROUP BY CustomerID
-)
-,frequency as 
+LIMIT 5;
+
+WITH recency AS 
 (
-select CustomerID,count(*)as frequency_count 
-from retail_sales
-where CustomerID is not null and Quantity>0
-group by CustomerID
-)
-,monetary as 
-(
-select CustomerID,sum(Quantity*unitprice)as total_spend
-from retail_sales
-where CustomerID is not null
-group by CustomerID
-)
-,rmf_raw as (
-select r.CustomerID,r.recency_days,f.frequency_count,m.total_spend
-from recency r 
-join frequency f on r.CustomerID=f.CustomerID
-join monetary m on r.CustomerID=m.CustomerID
-)
-,scores as (select *,
-ntile(5) over(order by recency_days desc) as R_score,
-ntile(5)over(order by frequency_count asc)as F_score,
-ntile(5)over(order by total_spend asc)as M_score
-from rmf_raw
-)
-,levels as 
-(
-select *,
-case 
-when R_score in (4,5) and F_score in(4,5) then "champions"
-when R_score in (1,2) and F_score in (1,2) then "loss"
-when R_score =1 and F_score in(1,2) then "about to sleep"
-else 
-"average custmers"
-end 
-from scores)
-,first_purchase AS (
     SELECT
         CustomerID,
-        InvoiceDate,
-        MIN(InvoiceDate) OVER (PARTITION BY CustomerID) AS firstpurchase
+        CAST(
+            julianday(DATE((SELECT MAX(InvoiceDate) FROM retail_sales))) -
+            julianday(DATE(MAX(InvoiceDate)))
+            AS INTEGER
+        ) AS recency_days
     FROM retail_sales
     WHERE CustomerID IS NOT NULL
+    GROUP BY CustomerID
 ),
-
-cohort_month AS (
-    SELECT
-        CustomerID,
-        firstpurchase,
-        (
-            (CAST(strftime('%Y', InvoiceDate) AS INTEGER) -
-             CAST(strftime('%Y', firstpurchase) AS INTEGER)) * 12
-            +
-            (CAST(strftime('%m', InvoiceDate) AS INTEGER) -
-             CAST(strftime('%m', firstpurchase) AS INTEGER))
-        ) AS cohort_month
-    FROM first_purchase
+frequency AS 
+(
+    SELECT CustomerID, COUNT(*) AS frequency_count 
+    FROM retail_sales
+    WHERE CustomerID IS NOT NULL AND Quantity > 0
+    GROUP BY CustomerID
+),
+monetary AS 
+(
+    SELECT CustomerID, SUM(Quantity*unitprice) AS total_spend
+    FROM retail_sales
+    WHERE CustomerID IS NOT NULL
+    GROUP BY CustomerID
+),
+rmf_raw AS (
+    SELECT r.CustomerID, r.recency_days, f.frequency_count, m.total_spend
+    FROM recency r 
+    JOIN frequency f ON r.CustomerID = f.CustomerID
+    JOIN monetary m ON r.CustomerID = m.CustomerID
+),
+scores AS (
+    SELECT *,
+    NTILE(5) OVER(ORDER BY recency_days DESC) AS R_score,
+    NTILE(5) OVER(ORDER BY frequency_count ASC) AS F_score,
+    NTILE(5) OVER(ORDER BY total_spend ASC) AS M_score
+    FROM rmf_raw
+),
+levels AS 
+(
+    SELECT *,
+    CASE 
+        WHEN R_score IN (4,5) AND F_score IN (4,5) THEN "champions"
+        WHEN R_score IN (1,2) AND F_score IN (1,2) THEN "loss"
+        WHEN R_score = 1 AND F_score IN (1,2) THEN "about to sleep"
+        ELSE "average customers"
+    END FROM scores
 )
+SELECT * FROM levels; 
+DROP TABLE IF EXISTS customer_cohorts;
 
-SELECT *
-FROM cohort_month;
+CREATE TEMP TABLE customer_cohorts AS
+WITH customer_first_purchase AS (
+    SELECT 
+        CustomerId,
+        MIN(InvoiceDate) AS first_purchase_date,
+        strftime('%Y-%m', MIN(InvoiceDate)) AS cohort_month
+    FROM retail_sales
+    WHERE CustomerId IS NOT NULL
+    GROUP BY CustomerId
+),
+ans AS (
+    SELECT 
+        r.CustomerId,
+        c.cohort_month,
+        ((strftime('%Y', r.InvoiceDate) - strftime('%Y', c.first_purchase_date)) * 12) +
+        (strftime('%m', r.InvoiceDate) - strftime('%m', c.first_purchase_date)) AS period_month
+    FROM retail_sales r
+    JOIN customer_first_purchase c ON r.CustomerId = c.CustomerId
+)
+SELECT * FROM ans;
+SELECT 
+    cohort_month AS "Cohort",
+    COUNT(DISTINCT CASE WHEN period_month = 0 THEN CustomerId END) AS "Size (Month 0)",
+    COUNT(DISTINCT CASE WHEN period_month = 1 THEN CustomerId END) AS "Month 1",
+    COUNT(DISTINCT CASE WHEN period_month = 2 THEN CustomerId END) AS "Month 2",
+    COUNT(DISTINCT CASE WHEN period_month = 3 THEN CustomerId END) AS "Month 3"
+FROM customer_cohorts
+WHERE cohort_month = '2026-01'
+GROUP BY cohort_month;
