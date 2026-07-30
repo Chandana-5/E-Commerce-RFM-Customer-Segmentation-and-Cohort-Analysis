@@ -114,18 +114,6 @@ The Excel dashboard includes:
 
 ---
 
-## 📁 Repository Structure
-
-```text
-Retail-Sales-SQL-Project/
-│
-├── Retail_Sales_Project.sql
-├── Retail_Sales_Dashboard.xlsx
-├── Dashboard.png
-├── README.md
-```
-
----
 
 ## 🚀 Skills Demonstrated
 
